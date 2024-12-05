@@ -1,18 +1,22 @@
 // include the library code:
 #include <LiquidCrystal.h>
 
-#define LED_PIN1 8
-#define LED_PIN2 9
-#define BUTTON_PIN1 7
-#define BUTTON_PIN2 6
+#define LED_PIN1 9
+#define LED_PIN2 10
+#define BUTTON_PIN1 6
+#define BUTTON_PIN2 7
 #define WIN_LED_PIN 10      
 #define LOSS_LED_PIN 11 
+
+#define button 13
+int timerMode = 0;
+long startTime;
 
 const int rs = 12, en = 11, d4 = 5, d5 = 4, d6 = 3, d7 = 2;
 LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
 
 int buttonPin[] = {6,7};  // Button pins
-int ledPin[] = {8,9};     // LED pins
+int ledPin[] = {9,10};     // LED pins
 
 int seq[2];               // game sequence
 int playerSeq[2];         // player sequence
@@ -34,14 +38,29 @@ void setup() {
 }
 
 void loop() {
+    if (digitalRead(button) == LOW) {
+      startTime = millis();
+      timerMode++;
+      delay(400);
+    }
+    if (timerMode == 1) {
+      lcd.print((millis() - startTime) / 1000.0);
+    }
+    if (timerMode > 1) {
+      delay(2000);
+      timerMode = 0;
+      lcd.clear();
+      lcd.print("click to start");
+    }
 
   // process of printing the message to the screen
-  for (in positionCounter = 0; positionCounter < 34; positionCounter++) {
+  for (int positionCounter = 0; positionCounter < 31; positionCounter++) {
     lcd.scrollDisplayLeft();                             // moves all the text one space to the left each time a letter is added.
     delay(100);
   }
   delay(1000);
 
+  
   generateSequence();
   playSequence();
 
