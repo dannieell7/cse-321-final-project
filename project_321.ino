@@ -1,139 +1,147 @@
 // include the library code:
 #include <LiquidCrystal.h>
 
-#define LED_PIN1 9
-#define LED_PIN2 10
+// Pin definitions
 #define BUTTON_PIN1 6
 #define BUTTON_PIN2 7
-#define WIN_LED_PIN 10      
-#define LOSS_LED_PIN 11 
+#define START_BUTTON_PIN 13
+#define WIN_LED_PIN 10
+#define GAME_TIME_MS 5000 // Time in milliseconds for the timer
 
-#define button 13
-int timerMode = 0;
-long startTime;
+// Game settings
+const int MAX_SEQUENCE_LENGTH = 3;
+int ledPins[] = {9, 10};        // LEDs for Simon game
+int buttonPins[] = {6, 7};      // Buttons for Simon game
 
+// Variables
 const int rs = 12, en = 11, d4 = 5, d5 = 4, d6 = 3, d7 = 2;
 LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
 
-int buttonPin[] = {6,7};  // Button pins
-int ledPin[] = {9,10};     // LED pins
-
-int seq[2];               // game sequence
-int playerSeq[2];         // player sequence
-int sequenceLength = 0;
+int simonSequence[MAX_SEQUENCE_LENGTH]; // Simon game sequence
+int playerSequence[MAX_SEQUENCE_LENGTH];
+int currentSequenceLength = 0;
+int gameState = 0;
+unsigned long startTime;
 
 void setup() {
+  lcd.begin(16, 2);                          // Initialize LCD
+  lcd.print("Press start!");                 // Initial message
 
-  lcd.begin(16, 2);                                       // set up lcd number of columns and rows
-  lcd.print("press button to start simon game");          // print a message to the lcd
-
+  pinMode(START_BUTTON_PIN, INPUT_PULLUP);   // Start button
+  pinMode(WIN_LED_PIN, OUTPUT);              // Win LED
   for (int i = 0; i < 2; i++) {
-    pinMode(ledPin[i], OUTPUT);                           // set the led pins as outputs
-    pinMode(buttonPin[i], INPUT);                         // set the button pin as inputs
+    pinMode(ledPins[i], OUTPUT);             // Set LED pins as outputs
+    pinMode(buttonPins[i], INPUT_PULLUP);    // Set button pins as inputs
   }
-  randomSeed(analogRead(0));                              // Initialize random seed
+  randomSeed(analogRead(0));                 // Initialize random seed
   Serial.begin(9600);
-
-
 }
 
 void loop() {
-    if (digitalRead(button) == LOW) {
-      startTime = millis();
-      timerMode++;
-      delay(400);
-    }
-    if (timerMode == 1) {
-      lcd.print((millis() - startTime) / 1000.0);
-    }
-    if (timerMode > 1) {
-      delay(2000);
-      timerMode = 0;
-      lcd.clear();
-      lcd.print("click to start");
-    }
-
-  // process of printing the message to the screen
-  for (int positionCounter = 0; positionCounter < 31; positionCounter++) {
-    lcd.scrollDisplayLeft();                             // moves all the text one space to the left each time a letter is added.
-    delay(100);
-  }
-  delay(1000);
-
-  
-  generateSequence();
-  playSequence();
-
-  if (checkPlayerInput()) {
-    Serial.println("You won");
-    indicateWin();
-  } else {
-    Serial.println("You lost");
-    indicateLoss();
-  }
-  delay(1000);
-}
-
-// this function generates the sequence
-void generateSequence() {
-  seq[sequenceLength] = random(0,2);
-  sequenceLength++;
-}
-
-// this function plays the sequence for the user.
-void playSequence() {
-  for (int i=0; i < sequenceLength; i++) {
-    digitalWrite(ledPin[seq[i]], HIGH);
-    delay(500);
-    digitalWrite(ledPin[seq[i]], LOW);
-    delay(250);
-
-    bool correctButtonPressed = false;
-    while (!correctButtonPressed) {
-      if (digitalRead(buttonPin[seq[i]]) == HIGH) { // Check if player pressed correct button
-        correctButtonPressed = true;
-        delay(200);  // Debounce delay
+  switch (gameState) {
+    case 0: // Wait for start button press
+      if (digitalRead(START_BUTTON_PIN) == LOW) {
+        startTime = millis();
+        lcd.clear();
+        lcd.print("Timer running...");
+        gameState = 1;
+        delay(200);
       }
-    }
+      break;
+
+    case 1: // Timer countdown
+      if (millis() - startTime < GAME_TIME_MS) {
+        lcd.setCursor(0, 1);
+        lcd.print((GAME_TIME_MS - (millis() - startTime)) / 1000);
+      } else {
+        lcd.clear();
+        lcd.print("Press button!");
+        gameState = 2;
+      }
+      break;
+
+    case 2: // Wait for Simon game start button
+      if (digitalRead(BUTTON_PIN1) == LOW || digitalRead(BUTTON_PIN2) == LOW) {
+        lcd.clear();
+        lcd.print("Simon game start");
+        delay(1000);
+        gameState = 3;
+      }
+      break;
+
+    case 3: // Play Simon game
+      playSimonGame();
+      gameState = 4;
+      break;
+
+    case 4: // End of game
+      blinkWinLED();
+      resetGame();
+      gameState = 0;
+      break;
   }
 }
 
-// this function checks the players input sequence
-bool checkPlayerInput() {
-  for (int i=0; i < sequenceLength; i++) {
-    bool pressedButton = false;
-    while (!pressedButton) {
-      for (int j=0; j<2; j++) {
-        if (digitalRead(buttonPin[j] == HIGH)) {
-          playerSeq[i] = j;
-          pressedButton = true;
-          break;
+void playSimonGame() {
+  for (int i = 0; i < MAX_SEQUENCE_LENGTH; i++) {
+    generateSequence(i);
+    playSequence(i);
+    if (!getPlayerInput(i)) {
+      lcd.clear();
+      lcd.print("You lost!");
+      delay(2000);
+      return;
+    }
+  }
+  lcd.clear();
+  lcd.print("You won!");
+  delay(2000);
+}
+
+void generateSequence(int index) {
+  simonSequence[index] = random(0, 2); // Generate random sequence
+}
+
+void playSequence(int length) {
+  for (int i = 0; i <= length; i++) {
+    digitalWrite(ledPins[simonSequence[i]], HIGH);
+    delay(500);
+    digitalWrite(ledPins[simonSequence[i]], LOW);
+    delay(250);
+  }
+}
+
+bool getPlayerInput(int length) {
+  for (int i = 0; i <= length; i++) {
+    bool buttonPressed = false;
+    while (!buttonPressed) {
+      for (int j = 0; j < 2; j++) {
+        if (digitalRead(buttonPins[j]) == LOW) {
+          playerSequence[i] = j;
+          buttonPressed = true;
+          delay(200); // Debounce
         }
       }
     }
-    if (playerSeq[i] != seq[i]) {
+    if (playerSequence[i] != simonSequence[i]) {
       return false;
     }
   }
   return true;
 }
 
-// lights up green led when user wins the game
-void indicateWin() {
-  digitalWrite(WIN_LED_PIN, HIGH);  
-  delay(2000);                      
-  digitalWrite(WIN_LED_PIN, LOW);   
+void blinkWinLED() {
+  for (int i = 0; i < 3; i++) {
+    digitalWrite(WIN_LED_PIN, HIGH);
+    delay(500);
+    digitalWrite(WIN_LED_PIN, LOW);
+    delay(500);
+  }
 }
 
-// lights up red led when user loses the game
-void indicateLoss() {
-  digitalWrite(LOSS_LED_PIN, HIGH); 
-  delay(2000);                      
-  digitalWrite(LOSS_LED_PIN, LOW);  
-}
-
-// resets the game after player wins or loses
 void resetGame() {
-  sequenceLength = 0;
-  delay(1000);
+  currentSequenceLength = 0;
+  lcd.clear();
+  lcd.print("Press start!");
 }
+
